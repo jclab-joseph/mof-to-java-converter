@@ -1,0 +1,47 @@
+name: Deploy
+
+permissions:
+  contents: write
+
+on:
+  push: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-go@v3
+        with:
+          go-version: '1.20.3'
+      - run: go version
+      - run: mkdir -p dist
+      - name: Build For Linux
+        run: |
+          make converter.exe
+          mkdir -p dist
+          cp converter.exe dist/converter.exe
+      - name: Archive production artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: dist
+          path: |
+            dist/
+  release:
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: dist
+          path: dist/
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          files: |
+            dist/*
