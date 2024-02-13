@@ -328,14 +328,21 @@ func GenerateJavaClassFromClassDecl(decl *goomi.MIClassDecl) {
 
 		for _, parameter := range method.Parameters {
 			var paramTypeName string
+			var paramTypeAnnotation string
 
 			modeIn := parameter.Qualifiers.HasIn()
 			modeOut := parameter.Qualifiers.HasOut()
 
+			interfaceGen.AddImport("org.xmlsoap.schemas.ws._2004._08.addressing.EndpointReferenceType")
+
 			if parameter.Type == goomi.MI_REFERENCE {
-				paramTypeName = parameter.ClassName
+				interfaceGen.AddImport("kr.jclab.wsman.types.annotation.ReferenceTypeInfo")
+				paramTypeAnnotation = "@ReferenceTypeInfo(type = " + parameter.ClassName + ".class)"
+				paramTypeName = "EndpointReferenceType"
 			} else if parameter.Type == goomi.MI_REFERENCEA {
-				paramTypeName = "java.util.List<" + parameter.ClassName + ">"
+				interfaceGen.AddImport("kr.jclab.wsman.types.annotation.ReferenceTypeInfo")
+				paramTypeAnnotation = "@ReferenceTypeInfo(type = " + parameter.ClassName + ".class)"
+				paramTypeName = "java.util.List<EndpointReferenceType>"
 			} else {
 				paramType := FieldTypeToJava(parameter.Type, parameter.Qualifiers)
 
@@ -358,10 +365,16 @@ func GenerateJavaClassFromClassDecl(decl *goomi.MIClassDecl) {
 
 			if modeIn {
 				inputClassGen.AddBody(fmt.Sprintf("@XmlElement(namespace = \"%s\", name = \"%s\")", xmlNs, parameter.Name))
+				if paramTypeAnnotation != "" {
+					inputClassGen.AddBody(paramTypeAnnotation)
+				}
 				inputClassGen.AddBody(fmt.Sprintf("public %s %s;", paramTypeName, parameter.Name))
 			}
 			if modeOut {
 				outputClassGen.AddBody(fmt.Sprintf("@XmlElement(namespace = \"%s\", name = \"%s\")", xmlNs, parameter.Name))
+				if paramTypeAnnotation != "" {
+					outputClassGen.AddBody(paramTypeAnnotation)
+				}
 				outputClassGen.AddBody(fmt.Sprintf("public %s %s;", paramTypeName, parameter.Name))
 			}
 		}
@@ -392,10 +405,14 @@ func SimpleJavaFieldType(name string) *JavaFieldType {
 func FieldTypeToJava(valueType goomi.MIType, qualifiers goomi.MIQualifiers) *JavaFieldType {
 	octetStringQualifier := qualifiers.FindByName("OctetString")
 	if octetStringQualifier != nil {
-		return &JavaFieldType{
-			Imports: []string{"kr.jclab.wsman.types.adapter.OctetStringAdapter", "jakarta.xml.bind.annotation.adapters.XmlJavaTypeAdapter"},
-			Prefix:  []string{"@XmlJavaTypeAdapter(OctetStringAdapter.class)"},
-			Name:    "byte[]",
+		if valueType == goomi.MI_UINT8A {
+			return &JavaFieldType{
+				Imports: []string{"kr.jclab.wsman.types.adapter.OctetStringAdapter", "jakarta.xml.bind.annotation.adapters.XmlJavaTypeAdapter"},
+				Prefix:  []string{"@XmlJavaTypeAdapter(OctetStringAdapter.class)"},
+				Name:    "byte[]",
+			}
+		} else if valueType == goomi.MI_STRING && valueType == goomi.MI_STRINGA {
+			log.Printf("invalid OctetString type=%v", valueType)
 		}
 	}
 
