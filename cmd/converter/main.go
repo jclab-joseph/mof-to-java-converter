@@ -287,6 +287,15 @@ func GenerateJavaClassFromClassDecl(decl *goomi.MIClassDecl) {
 	interfaceGen.AddBody(fmt.Sprintf("%s Get();", classGen.Name))
 	interfaceGen.AddBody("")
 
+	interfaceGen.AddBody("@WebMethod(operationName = \"Put\")")
+	interfaceGen.AddBody("@Action(\n        input = \"http://schemas.xmlsoap.org/ws/2004/09/transfer/Put\"\n    )")
+	interfaceGen.AddBody(fmt.Sprintf("@WebResult(name = \"%s\", targetNamespace = \"%s\", partName = \"Body\")", classGen.Name, xmlNs))
+	interfaceGen.AddBody(fmt.Sprintf("%s Put(", classGen.Name))
+	interfaceGen.AddBody(fmt.Sprintf("    @WebParam(mode = WebParam.Mode.IN, partName = \"%s\", name = \"%s\", targetNamespace = \"%s\")", decl.Name, decl.Name, xmlNs))
+	interfaceGen.AddBody(fmt.Sprintf("    %s instance", classGen.Name))
+	interfaceGen.AddBody(");")
+	interfaceGen.AddBody("")
+
 	for _, method := range decl.Methods {
 		if method.Origin != decl.Name {
 			// Inherited property
