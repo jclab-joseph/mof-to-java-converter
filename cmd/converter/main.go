@@ -211,6 +211,8 @@ func GenerateJavaClassFromClassDecl(decl *goomi.MIClassDecl) {
 	interfaceGen.AddImport("jakarta.jws.WebResult")
 	interfaceGen.AddImport("jakarta.jws.WebParam")
 
+	classGen.AddImport("jakarta.xml.bind.annotation.XmlRootElement")
+
 	// INPUT/OUTPUT DTO
 	interfaceGen.AddImport("jakarta.xml.bind.annotation.XmlType")
 	interfaceGen.AddImport("jakarta.xml.bind.annotation.XmlAccessorType")
@@ -223,7 +225,14 @@ func GenerateJavaClassFromClassDecl(decl *goomi.MIClassDecl) {
 	}
 
 	classGen.AddClassAnnotation("@XmlAccessorType(XmlAccessType.PROPERTY)")
-	classGen.AddClassAnnotation(fmt.Sprintf("@XmlType(namespace = \"%s\")", xmlNs))
+	if xmlNs != "" {
+		classGen.AddClassAnnotation(fmt.Sprintf("@XmlType(namespace = \"%s\", name = \"%s\")", xmlNs, decl.Name))
+	} else {
+		classGen.AddClassAnnotation(fmt.Sprintf("@XmlType(name = \"%s\")", decl.Name))
+	}
+	if !classGen.IsAbstract && xmlNs != "" {
+		classGen.AddClassAnnotation(fmt.Sprintf("@XmlRootElement(namespace = \"%s\", name = \"%s\")", xmlNs, decl.Name))
+	}
 
 	if xmlNs != "" {
 		classGen.AddBody(fmt.Sprintf("public static final String RESOURCE_URI = \"%s\";", xmlNs))
