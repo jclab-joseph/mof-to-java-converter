@@ -192,11 +192,13 @@ func GenerateJavaClassFromClassDecl(decl *goomi.MIClassDecl) {
 	classGen := newDtoClassGen(decl.Name, decl.SuperClass)
 	abstractQualifier := decl.Qualifiers.FindByName("Abstract")
 	if abstractQualifier != nil {
-		log.Printf("")
 		classGen.IsAbstract = true
 	}
 
 	interfaceGen := javagen.NewClassDecl(javagen.INTERFACE)
+	if decl.SuperClass != "" {
+		interfaceGen.SuperClass = decl.SuperClass + "DataSource"
+	}
 	interfaceGen.PackageName = javaPackage
 	interfaceGen.Name = decl.Name + "DataSource"
 
@@ -281,59 +283,103 @@ func GenerateJavaClassFromClassDecl(decl *goomi.MIClassDecl) {
 	interfaceGen.AddClassAnnotation("@XmlSeeAlso({\n    org.xmlsoap.schemas.ws._2004._09.transfer.ObjectFactory.class,\n    org.xmlsoap.schemas.ws._2004._08.addressing.ObjectFactory.class\n})")
 	interfaceGen.AddClassAnnotation("@SOAPBinding(parameterStyle = ParameterStyle.BARE)")
 
-	interfaceGen.AddBody("@WebMethod(operationName = \"Get\")")
-	interfaceGen.AddBody("@Action(\n        input = \"http://schemas.xmlsoap.org/ws/2004/09/transfer/Get\"\n    )")
-	interfaceGen.AddBody(fmt.Sprintf("@WebResult(name = \"%s\", targetNamespace = \"%s\", partName = \"Body\")", classGen.Name, xmlNs))
-	interfaceGen.AddBody(fmt.Sprintf("%s Get();", classGen.Name))
-	interfaceGen.AddBody("")
+	if !classGen.IsAbstract && xmlNs != "" {
+		var hasGet bool
+		var hasPut bool
+		var hasDelete bool
 
-	interfaceGen.AddBody("@WebMethod(operationName = \"Put\")")
-	interfaceGen.AddBody("@Action(\n        input = \"http://schemas.xmlsoap.org/ws/2004/09/transfer/Put\"\n    )")
-	interfaceGen.AddBody(fmt.Sprintf("@WebResult(name = \"%s\", targetNamespace = \"%s\", partName = \"Body\")", classGen.Name, xmlNs))
-	interfaceGen.AddBody(fmt.Sprintf("%s Put(", classGen.Name))
-	interfaceGen.AddBody(fmt.Sprintf("    @WebParam(mode = WebParam.Mode.IN, partName = \"%s\", name = \"%s\", targetNamespace = \"%s\")", decl.Name, decl.Name, xmlNs))
-	interfaceGen.AddBody(fmt.Sprintf("    %s instance", classGen.Name))
-	interfaceGen.AddBody(");")
-	interfaceGen.AddBody("")
-
-	for _, method := range decl.Methods {
-		if method.Origin != decl.Name {
-			// Inherited property
-			continue
+		if !hasGet {
+			interfaceGen.AddBody("@WebMethod(operationName = \"Get\")")
+			interfaceGen.AddBody("@Action(\n        input = \"http://schemas.xmlsoap.org/ws/2004/09/transfer/Get\"\n    )")
+			interfaceGen.AddBody(fmt.Sprintf("@WebResult(name = \"%s\", targetNamespace = \"%s\", partName = \"Body\")", classGen.Name, xmlNs))
+			interfaceGen.AddBody(fmt.Sprintf("%s Get();", classGen.Name))
+			interfaceGen.AddBody("")
 		}
 
-		inputClassGen := newDtoClassGen(method.Name+"_INPUT", "")
-		inputClassGen.IsSubClass = true
-		inputClassGen.AddClassAnnotation("@XmlAccessorType(XmlAccessType.PROPERTY)")
-		inputClassGen.AddClassAnnotation(fmt.Sprintf("@XmlType(namespace = \"%s\", name = \"%s\")", xmlNs, inputClassGen.Name))
+		if !hasPut {
+			interfaceGen.AddBody("@WebMethod(operationName = \"Put\")")
+			interfaceGen.AddBody("@Action(\n        input = \"http://schemas.xmlsoap.org/ws/2004/09/transfer/Put\"\n    )")
+			interfaceGen.AddBody(fmt.Sprintf("@WebResult(name = \"%s\", targetNamespace = \"%s\", partName = \"Body\")", classGen.Name, xmlNs))
+			interfaceGen.AddBody(fmt.Sprintf("%s Put(", classGen.Name))
+			interfaceGen.AddBody(fmt.Sprintf("    @WebParam(mode = WebParam.Mode.IN, partName = \"%s\", name = \"%s\", targetNamespace = \"%s\")", decl.Name, decl.Name, xmlNs))
+			interfaceGen.AddBody(fmt.Sprintf("    %s instance", classGen.Name))
+			interfaceGen.AddBody(");")
+			interfaceGen.AddBody("")
+		}
 
-		outputClassGen := newDtoClassGen(method.Name+"_OUTPUT", "")
-		outputClassGen.IsSubClass = true
-		outputClassGen.AddClassAnnotation("@XmlAccessorType(XmlAccessType.PROPERTY)")
-		outputClassGen.AddClassAnnotation(fmt.Sprintf("@XmlType(namespace = \"%s\", name = \"%s\")", xmlNs, outputClassGen.Name))
+		if !hasDelete {
+			interfaceGen.AddBody("@WebMethod(operationName = \"Delete\")")
+			interfaceGen.AddBody("@Action(\n        input = \"http://schemas.xmlsoap.org/ws/2004/09/transfer/Delete\"\n    )")
+			interfaceGen.AddBody("void Delete();")
+			interfaceGen.AddBody("")
+		}
+	}
+
+	for _, method := range decl.Methods {
+		var isInherited = method.Origin != decl.Name
 
 		returnType := FieldTypeToJava(goomi.MIType(method.ReturnType), nil)
 		for _, s := range returnType.Imports {
 			interfaceGen.AddImport(s)
 		}
 
-		outputClassGen.AddBody(fmt.Sprintf("@XmlElement(namespace = \"%s\", name = \"ReturnValue\")", xmlNs))
-		for _, prefix := range returnType.Prefix {
-			outputClassGen.AddBody(prefix)
-		}
-		outputClassGen.AddBody(fmt.Sprintf("public %s ReturnValue;", returnType.Name))
+		var inputClassGen *javagen.ClassDecl
+		var outputClassGen *javagen.ClassDecl
 
-		interfaceGen.AddBody(fmt.Sprintf("@WebMethod(operationName = \"%s\")", method.Name))
-		interfaceGen.AddBody("@Action(")
-		interfaceGen.AddBody(fmt.Sprintf("    input = \"%s\",", xmlNs+"/"+method.Name))
-		interfaceGen.AddBody(fmt.Sprintf("    output = \"%s\"", xmlNs+"/"+outputClassGen.Name))
-		interfaceGen.AddBody(")")
-		interfaceGen.AddBody(fmt.Sprintf("@WebResult(name = \"%s\", partName = \"%s\", targetNamespace = \"%s\")", outputClassGen.Name, outputClassGen.Name, xmlNs))
-		interfaceGen.AddBody(fmt.Sprintf("%s %s(", outputClassGen.Name, method.Name))
-		interfaceGen.AddBody(fmt.Sprintf("    @WebParam(mode = WebParam.Mode.IN, partName = \"%s\", name = \"%s\", targetNamespace = \"%s\")", inputClassGen.Name, inputClassGen.Name, xmlNs))
-		interfaceGen.AddBody(fmt.Sprintf("    %s input", inputClassGen.Name))
-		interfaceGen.AddBody(");")
-		interfaceGen.AddBody("")
+		inputClassName := method.Name + "_INPUT"
+		outputClassName := method.Name + "_OUTPUT"
+
+		if !isInherited {
+			inputClassGen = newDtoClassGen(inputClassName, "")
+			inputClassGen.IsSubClass = true
+			inputClassGen.AddClassAnnotation("@XmlAccessorType(XmlAccessType.PROPERTY)")
+			if xmlNs != "" {
+				inputClassGen.AddClassAnnotation(fmt.Sprintf("@XmlType(namespace = \"%s\", name = \"%s\")", xmlNs, inputClassGen.Name))
+			} else {
+				inputClassGen.AddClassAnnotation(fmt.Sprintf("@XmlType(name = \"%s\")", inputClassGen.Name))
+			}
+
+			outputClassGen = newDtoClassGen(outputClassName, "")
+			outputClassGen.IsSubClass = true
+			outputClassGen.AddClassAnnotation("@XmlAccessorType(XmlAccessType.PROPERTY)")
+			if xmlNs != "" {
+				outputClassGen.AddClassAnnotation(fmt.Sprintf("@XmlType(namespace = \"%s\", name = \"%s\")", xmlNs, outputClassGen.Name))
+			} else {
+				outputClassGen.AddClassAnnotation(fmt.Sprintf("@XmlType(name = \"%s\")", outputClassGen.Name))
+			}
+
+			if xmlNs != "" {
+				outputClassGen.AddBody(fmt.Sprintf("@XmlElement(namespace = \"%s\", name = \"ReturnValue\")", xmlNs))
+			} else {
+				outputClassGen.AddBody("@XmlElement(name = \"ReturnValue\")")
+			}
+			for _, prefix := range returnType.Prefix {
+				outputClassGen.AddBody(prefix)
+			}
+			outputClassGen.AddBody(fmt.Sprintf("public %s ReturnValue;", returnType.Name))
+		}
+
+		if !classGen.IsAbstract && xmlNs != "" {
+			interfaceGen.AddBody(fmt.Sprintf("@WebMethod(operationName = \"%s\")", method.Name))
+			interfaceGen.AddBody("@Action(")
+			interfaceGen.AddBody(fmt.Sprintf("    input = \"%s\",", xmlNs+"/"+method.Name))
+			interfaceGen.AddBody(fmt.Sprintf("    output = \"%s\"", xmlNs+"/"+outputClassName))
+			interfaceGen.AddBody(")")
+			if xmlNs != "" {
+				interfaceGen.AddBody(fmt.Sprintf("@WebResult(name = \"%s\", partName = \"%s\", targetNamespace = \"%s\")", outputClassName, outputClassName, xmlNs))
+			} else {
+				interfaceGen.AddBody(fmt.Sprintf("@WebResult(name = \"%s\", partName = \"%s\")", outputClassName, outputClassName))
+			}
+			interfaceGen.AddBody(fmt.Sprintf("%s %s(", outputClassName, method.Name))
+			if xmlNs != "" {
+				interfaceGen.AddBody(fmt.Sprintf("    @WebParam(mode = WebParam.Mode.IN, partName = \"%s\", name = \"%s\", targetNamespace = \"%s\")", inputClassName, inputClassName, xmlNs))
+			} else {
+				interfaceGen.AddBody(fmt.Sprintf("    @WebParam(mode = WebParam.Mode.IN, partName = \"%s\", name = \"%s\")", inputClassName, inputClassName))
+			}
+			interfaceGen.AddBody(fmt.Sprintf("    %s input", inputClassName))
+			interfaceGen.AddBody(");")
+			interfaceGen.AddBody("")
+		}
 
 		for _, parameter := range method.Parameters {
 			var paramTypeName string
@@ -359,12 +405,14 @@ func GenerateJavaClassFromClassDecl(decl *goomi.MIClassDecl) {
 					interfaceGen.AddImport(s)
 				}
 
-				for _, prefix := range paramType.Prefix {
-					if modeIn {
-						inputClassGen.AddBody(prefix)
-					}
-					if modeOut {
-						outputClassGen.AddBody(prefix)
+				if !isInherited {
+					for _, prefix := range paramType.Prefix {
+						if modeIn {
+							inputClassGen.AddBody(prefix)
+						}
+						if modeOut {
+							outputClassGen.AddBody(prefix)
+						}
 					}
 				}
 
@@ -372,26 +420,38 @@ func GenerateJavaClassFromClassDecl(decl *goomi.MIClassDecl) {
 				paramTypeName = paramType.Name
 			}
 
-			if modeIn {
-				inputClassGen.AddBody(fmt.Sprintf("@XmlElement(namespace = \"%s\", name = \"%s\")", xmlNs, parameter.Name))
-				if paramTypeAnnotation != "" {
-					inputClassGen.AddBody(paramTypeAnnotation)
+			if !isInherited {
+				if modeIn {
+					if xmlNs != "" {
+						inputClassGen.AddBody(fmt.Sprintf("@XmlElement(namespace = \"%s\", name = \"%s\")", xmlNs, parameter.Name))
+					} else {
+						inputClassGen.AddBody(fmt.Sprintf("@XmlElement(name = \"%s\")", parameter.Name))
+					}
+					if paramTypeAnnotation != "" {
+						inputClassGen.AddBody(paramTypeAnnotation)
+					}
+					inputClassGen.AddBody(fmt.Sprintf("public %s %s;", paramTypeName, parameter.Name))
 				}
-				inputClassGen.AddBody(fmt.Sprintf("public %s %s;", paramTypeName, parameter.Name))
-			}
-			if modeOut {
-				outputClassGen.AddBody(fmt.Sprintf("@XmlElement(namespace = \"%s\", name = \"%s\")", xmlNs, parameter.Name))
-				if paramTypeAnnotation != "" {
-					outputClassGen.AddBody(paramTypeAnnotation)
+				if modeOut {
+					if xmlNs != "" {
+						outputClassGen.AddBody(fmt.Sprintf("@XmlElement(namespace = \"%s\", name = \"%s\")", xmlNs, parameter.Name))
+					} else {
+						outputClassGen.AddBody(fmt.Sprintf("@XmlElement(name = \"%s\")", parameter.Name))
+					}
+					if paramTypeAnnotation != "" {
+						outputClassGen.AddBody(paramTypeAnnotation)
+					}
+					outputClassGen.AddBody(fmt.Sprintf("public %s %s;", paramTypeName, parameter.Name))
 				}
-				outputClassGen.AddBody(fmt.Sprintf("public %s %s;", paramTypeName, parameter.Name))
 			}
 		}
 
-		interfaceGen.AddBody(inputClassGen.Generate())
-		interfaceGen.AddBody("")
-		interfaceGen.AddBody(outputClassGen.Generate())
-		interfaceGen.AddBody("")
+		if !isInherited {
+			interfaceGen.AddBody(inputClassGen.Generate())
+			interfaceGen.AddBody("")
+			interfaceGen.AddBody(outputClassGen.Generate())
+			interfaceGen.AddBody("")
+		}
 		interfaceGen.AddBody("")
 	}
 
