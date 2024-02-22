@@ -538,7 +538,11 @@ func FieldTypeToJava(valueType goomi.MIType, qualifiers goomi.MIQualifiers) *Jav
 	//case goomi.MI_CHAR16:
 	//	return *(*char16)(pointer)
 	case goomi.MI_DATETIME:
-		return SimpleJavaFieldType("java.time.OffsetDateTime")
+		return &JavaFieldType{
+			Imports: []string{"kr.jclab.wsman.types.adapter.OffsetDateTimeAdapter", "jakarta.xml.bind.annotation.adapters.XmlJavaTypeAdapter"},
+			Prefix:  []string{"@XmlJavaTypeAdapter(OffsetDateTimeAdapter.class)"},
+			Name:    "java.time.OffsetDateTime",
+		}
 	//case goomi.MI_REFERENCE:
 	//	return *(*reference)(pointer)
 	//case goomi.MI_INSTANCE:
