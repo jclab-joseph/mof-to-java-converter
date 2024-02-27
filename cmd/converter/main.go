@@ -269,23 +269,19 @@ func GenerateJavaClassFromClassDecl(decl *goomi.MIClassDecl) {
 		xmlElementParams := "name = \"" + property.Name + "\""
 
 		classGen.AddBody("@XmlElement(" + xmlElementParams + ")")
-		if property.Type == goomi.MI_REFERENCE {
-			classGen.AddBody("public " + property.ClassName + " " + FieldNameToJava(property.Name) + ";")
+		javaFieldType := FieldTypeToJava(property.Type, property.Qualifiers, property.ClassName)
+		if javaFieldType == nil {
+			classGen.AddBody(fmt.Sprintf("// ERROR: %v", property.Type))
 		} else {
-			javaFieldType := FieldTypeToJava(property.Type, property.Qualifiers)
-			if javaFieldType == nil {
-				classGen.AddBody(fmt.Sprintf("// ERROR: %v", property.Type))
-			} else {
-				for _, s := range javaFieldType.Imports {
-					classGen.AddImport(s)
-				}
-				for _, prefix := range javaFieldType.Prefix {
-					classGen.AddBody(prefix)
-				}
-				classGen.AddBody("public " + javaFieldType.Name + " " + FieldNameToJava(property.Name) + ";")
+			for _, s := range javaFieldType.Imports {
+				classGen.AddImport(s)
 			}
-			classGen.AddBody("\n")
+			for _, prefix := range javaFieldType.Prefix {
+				classGen.AddBody(prefix)
+			}
+			classGen.AddBody("public " + javaFieldType.Name + " " + FieldNameToJava(property.Name) + ";")
 		}
+		classGen.AddBody("\n")
 	}
 
 	interfaceGen.AddClassAnnotation("@WebService(targetNamespace = \"" + xmlNs + "\", name = \"" + interfaceGen.Name + "\")")
@@ -327,7 +323,7 @@ func GenerateJavaClassFromClassDecl(decl *goomi.MIClassDecl) {
 	for _, method := range decl.Methods {
 		var isInherited = method.Origin != decl.Name
 
-		returnType := FieldTypeToJava(goomi.MIType(method.ReturnType), nil)
+		returnType := FieldTypeToJava(goomi.MIType(method.ReturnType), nil, "")
 		for _, s := range returnType.Imports {
 			interfaceGen.AddImport(s)
 		}
@@ -399,35 +395,25 @@ func GenerateJavaClassFromClassDecl(decl *goomi.MIClassDecl) {
 
 			interfaceGen.AddImport("org.xmlsoap.schemas.ws._2004._08.addressing.EndpointReferenceType")
 
-			if parameter.Type == goomi.MI_REFERENCE {
-				interfaceGen.AddImport("kr.jclab.wsman.types.annotation.ReferenceTypeInfo")
-				paramTypeAnnotation = "@ReferenceTypeInfo(type = " + parameter.ClassName + ".class)"
-				paramTypeName = "EndpointReferenceType"
-			} else if parameter.Type == goomi.MI_REFERENCEA {
-				interfaceGen.AddImport("kr.jclab.wsman.types.annotation.ReferenceTypeInfo")
-				paramTypeAnnotation = "@ReferenceTypeInfo(type = " + parameter.ClassName + ".class)"
-				paramTypeName = "java.util.List<EndpointReferenceType>"
-			} else {
-				paramType := FieldTypeToJava(parameter.Type, parameter.Qualifiers)
+			paramType := FieldTypeToJava(parameter.Type, parameter.Qualifiers, parameter.ClassName)
 
-				for _, s := range paramType.Imports {
-					interfaceGen.AddImport(s)
-				}
+			for _, s := range paramType.Imports {
+				interfaceGen.AddImport(s)
+			}
 
-				if !isInherited {
-					for _, prefix := range paramType.Prefix {
-						if modeIn {
-							inputClassGen.AddBody(prefix)
-						}
-						if modeOut {
-							outputClassGen.AddBody(prefix)
-						}
+			if !isInherited {
+				for _, prefix := range paramType.Prefix {
+					if modeIn {
+						inputClassGen.AddBody(prefix)
+					}
+					if modeOut {
+						outputClassGen.AddBody(prefix)
 					}
 				}
-
-				//to above of method
-				paramTypeName = paramType.Name
 			}
+
+			//to above of method
+			paramTypeName = paramType.Name
 
 			if !isInherited {
 				if modeIn {
@@ -480,7 +466,7 @@ func SimpleJavaFieldType(name string) *JavaFieldType {
 	}
 }
 
-func FieldTypeToJava(valueType goomi.MIType, qualifiers goomi.MIQualifiers) *JavaFieldType {
+func FieldTypeToJava(valueType goomi.MIType, qualifiers goomi.MIQualifiers, refClassName string) *JavaFieldType {
 	octetStringQualifier := qualifiers.FindByName("OctetString")
 	if octetStringQualifier != nil {
 		if valueType == goomi.MI_UINT8A {
@@ -543,8 +529,18 @@ func FieldTypeToJava(valueType goomi.MIType, qualifiers goomi.MIQualifiers) *Jav
 			Prefix:  []string{"@XmlJavaTypeAdapter(OffsetDateTimeAdapter.class)"},
 			Name:    "java.time.OffsetDateTime",
 		}
-	//case goomi.MI_REFERENCE:
-	//	return *(*reference)(pointer)
+	case goomi.MI_REFERENCE:
+		return &JavaFieldType{
+			Imports: []string{"org.xmlsoap.schemas.ws._2004._08.addressing.EndpointReferenceType", "kr.jclab.wsman.types.annotation.ReferenceTypeInfo"},
+			Prefix:  []string{"@ReferenceTypeInfo(type = " + refClassName + ".class)"},
+			Name:    "EndpointReferenceType",
+		}
+	case goomi.MI_REFERENCEA:
+		return &JavaFieldType{
+			Imports: []string{"org.xmlsoap.schemas.ws._2004._08.addressing.EndpointReferenceType", "kr.jclab.wsman.types.annotation.ReferenceTypeInfo"},
+			Prefix:  []string{"@ReferenceTypeInfo(type = " + refClassName + ".class)"},
+			Name:    "java.util.List<EndpointReferenceType>",
+		}
 	//case goomi.MI_INSTANCE:
 	//	return *(*instance)(pointer)
 	case goomi.MI_BOOLEANA:
